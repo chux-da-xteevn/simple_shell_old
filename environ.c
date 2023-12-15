@@ -1,69 +1,92 @@
 #include "shell.h"
 
 /**
- * printallenv - prints all of the environment variables to our standard output
- * @environ: double pointer to all env variables
- *
- * Return: void
+ * _myenv - prints the current environment
+ * @info: Structure containing potential arguments. Used to maintain
+ * constant function prototype.
+ * Return: Always 0
  */
-void printallenv(char **environ)
+int _myenv(info_t *info)
 {
-	unsigned int i = 0;
-	unsigned int len;
-
-	while (environ[i])
-	{
-		/* find the length of each environment variable */
-		len = _strlen(environ[i]);
-
-		/* write it to the stdout */
-		write(STDOUT_FILENO, environ[i], len);
-		write(STDOUT_FILENO, "\n", 1);
-		++i;
-	}
+	print_list_str(info->env);
+	return (0);
 }
 
 /**
- * absPath- creates a double pointer array of all the directories contained
- * in the PATH, checks if first command is executable, then executes
- * @cmds: double pointer to all commands
- * @buffer: buffer created from getline
- * @env: double pointer to env variables
- * @argv: argument vector
- * @number: number of times commands have been entered in prompt
+ * _getenv - gets the value of an environ variable
+ * @info: Structure containing potential arguments. Used to maintain
+ * @name: env var name
  *
- * Return: void
+ * Return: the value
  */
-
-void absPath(char **cmds, char *buffer, char **env, char **argv, int number)
+char *_getenv(info_t *info, const char *name)
 {
-	struct stat getfileStat_0;
-	int i = 0;
-	char **alldir;
+	list_t *node = info->env;
+	char *p;
 
-	alldir = env_pathlist(cmds[0], env);
-
-	while (alldir[i]) /* looping through directories in PATH */
+	while (node)
 	{
-		if (stat(alldir[i], &getfileStat_0) == 0) /* if true, execute */
-			execve(alldir[i], cmds, NULL);
-		++i;
+		p = starts_with(node->str, name);
+		if (p && *p)
+			return (p);
+		node = node->next;
 	}
-	hsh_errormsg(argv, cmds[0], number);
-
-	free(buffer);
-	free_doubleptr(cmds);
-	free_doubleptr(alldir);
-	exit(EXIT_SUCCESS);
+	return (NULL);
 }
 
 /**
- * fork_fail - function that handles a fork fail
- *
- * Return: void
+ * _mysetenv - Initialize a new environment variable,
+ *             or modify an existing one
+ * @info: Structure containing potential arguments. Used to maintain
+ *        constant function prototype.
+ *  Return: Always 0
  */
-void fork_fail(void)
+int _mysetenv(info_t *info)
 {
-	perror("Error:");
-	exit(EXIT_FAILURE);
+	if (info->argc != 3)
+	{
+		_eputs("Incorrect number of arguements\n");
+		return (1);
+	}
+	if (_setenv(info, info->argv[1], info->argv[2]))
+		return (0);
+	return (1);
+}
+
+/**
+ * _myunsetenv - Remove an environment variable
+ * @info: Structure containing potential arguments. Used to maintain
+ * constant function prototype.
+ *  Return: Always 0
+ */
+int _myunsetenv(info_t *info)
+{
+	int i;
+
+	if (info->argc == 1)
+	{
+		_eputs("Too few arguements.\n");
+		return (1);
+	}
+	for (i = 1; i <= info->argc; i++)
+		_unsetenv(info, info->argv[i]);
+
+	return (0);
+}
+
+/**
+ * populate_env_list - populates env linked list
+ * @info: Structure containing potential arguments. Used to maintain
+ * constant function prototype.
+ * Return: Always 0
+ */
+int populate_env_list(info_t *info)
+{
+	list_t *node = NULL;
+	size_t i;
+
+	for (i = 0; environ[i]; i++)
+		add_node_end(&node, environ[i], 0);
+	info->env = node;
+	return (0);
 }
