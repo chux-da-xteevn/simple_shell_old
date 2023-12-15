@@ -1,104 +1,134 @@
 #include "shell.h"
 
+void sig_handler(int sig);
+int execute(char **args, char **front);
+
 /**
- * handler- handles signals and print the prompt
- * @signum: signal to handle
- *
- * Return: void
+ * sig_handler - Prints a new prompt upon a signal.
+ * @sig: The signal.
  */
-
-void handler(int signum)
+void sig_handler(int sig)
 {
-	(void) signum;
+	char *new_prompt = "\n$ ";
 
-	write(STDOUT_FILENO, "\n$ ", 3);
+	(void)sig;
+	signal(SIGINT, sig_handler);
+	write(STDIN_FILENO, new_prompt, 3);
 }
 
 /**
- * main- emulation of Shell with limited functionality
- * @argc: argument count
- * @argv: argument vector
- * @env: environment variables
+ * execute - Executes a command in a child process.
+ * @args: An array of arguments.
+ * @front: A double pointer to the beginning of args.
  *
- * Return: 0 on success, 1 if failure
+ * Return: If an error occurs - a corresponding error code.
+ *         O/w - The exit value of the last executed command.
  */
-
-int main(int argc, char **argv, char **env) /* checkout execve man page */
+int execute(char **args, char **front)
 {
-	char *buffer, **cmds;
-	size_t len;
-	ssize_t stringoftext;
-	char *prompt = "$ ", *exitcmd = "exit", *envcmd = "env";
-	pid_t pid;
-	struct stat getfileStatus;
-	int status, number;
-	(void)argc;
+	pid_t child_pid;
+	int status, flag = 0, ret = 0;
+	char *command = args[0];
 
-	buffer = NULL, len = 0, number = 0;
-
-	if (isatty(STDIN_FILENO))  /* testing if fd is associated with hsh */
-		write(STDOUT_FILENO, prompt, 2); /* write takes 3 args */
-/* fd, pointer to buf where data is stored, # of bytes to write from buffer */
-
-	signal(SIGINT, handler); /* signal kill: ctrl + c */
-/* sends SIGINT signal that stops process & ends never ending while loop */
-
-	while ((stringoftext = getline(&buffer, &len, stdin))) /* loop 4ever */
+	if (command[0] != '/' && command[0] != '.')
 	{
-		if (stringoftext == EOF)
-			eof_constant(buffer);
-		++number;
+		flag = 1;
+		command = get_location(command);
+	}
 
-		cmds = stringtokarray(buffer);
-		pid = fork(); /* create a new process */
-
-		if (pid == -1)
+	if (!command || (access(command, F_OK) == -1))
+	{
+		if (errno == EACCES)
+			ret = (create_error(args, 126));
+		else
+			ret = (create_error(args, 127));
+	}
+	else
+	{
+		child_pid = fork();
+		if (child_pid == -1)
 		{
-			fork_fail();
+			if (flag)
+				free(command);
+			perror("Error child:");
+			return (1);
 		}
-		if (pid == 0)
+		if (child_pid == 0)
 		{
-			/* check if commands is NULL or all empty spaces */
-			if (cmds == NULL)
-				cmds_is_null(buffer);
-			/* search to see if command is EXIT to exit the shell */
-			else if (_strcmp(exitcmd, cmds[0]))
-				exitfree(buffer, cmds);
-			/* search to see if command is ENV to print variables */
-			else if (_strcmp(envcmd, cmds[0]))
-				envfree(buffer, cmds, environ);
-			/* check if command is full path to a executable file */
-			else if (stat(cmds[0], &getfileStatus) == 0)
-			{
-				execve(cmds[0], cmds, NULL);
-			}
-			/* check all directories in PATH for executable cmds */
-			else
-				absPath(cmds, buffer, env, argv, number);
+			execve(command, args, environ);
+			if (errno == EACCES)
+				ret = (create_error(args, 126));
+			free_env();
+			free_args(args, front);
+			free_alias_list(aliases);
+			_exit(ret);
 		}
 		else
 		{
-			wait(&status); /* waits for child to finish */
-/* stores address of status: kill unneccessary bc child wont make zombies */
-			if (cmds == NULL)
-			{
-				free(buffer);
-				free_doubleptr(cmds);
-			}
-			else if (_strcmp(exitcmd, cmds[0]))
-				exitfree(buffer, cmds);
-			else
-				free(buffer);
-			free_doubleptr(cmds);
-
-			len = 0, buffer = NULL;
-
-			if (isatty(STDIN_FILENO))
-				write(STDOUT_FILENO, prompt, 2);
+			wait(&status);
+			ret = WEXITSTATUS(status);
 		}
 	}
-	if (stringoftext == -1)
-		return (EXIT_FAILURE); /* macro: this is 1 */
-	else
-		return (EXIT_SUCCESS); /* macro: this is 0 */
-}}
+	if (flag)
+		free(command);
+	return (ret);
+}
+
+/**
+ * main - Runs a simple UNIX command interpreter.
+ * @argc: The number of arguments supplied to the program.
+ * @argv: An array of pointers to the arguments.
+ *
+ * Return: The return value of the last executed command.
+ */
+int main(int argc, char *argv[])
+{
+	int ret = 0, retn;
+	int *exe_ret = &retn;
+	char *prompt = "$ ", *new_line = "\n";
+
+	name = argv[0];
+	hist = 1;
+	aliases = NULL;
+	signal(SIGINT, sig_handler);
+
+	*exe_ret = 0;
+	environ = _copyenv();
+	if (!environ)
+		exit(-100);
+
+	if (argc != 1)
+	{
+		ret = proc_file_commands(argv[1], exe_ret);
+		free_env();
+		free_alias_list(aliases);
+		return (*exe_ret);
+	}
+
+	if (!isatty(STDIN_FILENO))
+	{
+		while (ret != END_OF_FILE && ret != EXIT)
+			ret = handle_args(exe_ret);
+		free_env();
+		free_alias_list(aliases);
+		return (*exe_ret);
+	}
+
+	while (1)
+	{
+		write(STDOUT_FILENO, prompt, 2);
+		ret = handle_args(exe_ret);
+		if (ret == END_OF_FILE || ret == EXIT)
+		{
+			if (ret == END_OF_FILE)
+				write(STDOUT_FILENO, new_line, 1);
+			free_env();
+			free_alias_list(aliases);
+			exit(*exe_ret);
+		}
+	}
+
+	free_env();
+	free_alias_list(aliases);
+	return (*exe_ret);
+}

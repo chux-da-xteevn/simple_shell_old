@@ -1,69 +1,75 @@
 #include "shell.h"
 
+char **_copyenv(void);
+void free_env(void);
+char **_getenv(const char *var);
+
 /**
- * printallenv - prints all of the environment variables to our standard output
- * @environ: double pointer to all env variables
+ * _copyenv - Creates a copy of the environment.
  *
- * Return: void
+ * Return: If an error occurs - NULL.
+ *         O/w - a double pointer to the new copy.
  */
-void printallenv(char **environ)
+char **_copyenv(void)
 {
-	unsigned int i = 0;
-	unsigned int len;
+	char **new_environ;
+	size_t size;
+	int index;
 
-	while (environ[i])
+	for (size = 0; environ[size]; size++)
+		;
+
+	new_environ = malloc(sizeof(char *) * (size + 1));
+	if (!new_environ)
+		return (NULL);
+
+	for (index = 0; environ[index]; index++)
 	{
-		/* find the length of each environment variable */
-		len = _strlen(environ[i]);
+		new_environ[index] = malloc(_strlen(environ[index]) + 1);
 
-		/* write it to the stdout */
-		write(STDOUT_FILENO, environ[i], len);
-		write(STDOUT_FILENO, "\n", 1);
-		++i;
+		if (!new_environ[index])
+		{
+			for (index--; index >= 0; index--)
+				free(new_environ[index]);
+			free(new_environ);
+			return (NULL);
+		}
+		_strcpy(new_environ[index], environ[index]);
 	}
+	new_environ[index] = NULL;
+
+	return (new_environ);
 }
 
 /**
- * absPath- creates a double pointer array of all the directories contained
- * in the PATH, checks if first command is executable, then executes
- * @cmds: double pointer to all commands
- * @buffer: buffer created from getline
- * @env: double pointer to env variables
- * @argv: argument vector
- * @number: number of times commands have been entered in prompt
- *
- * Return: void
+ * free_env - Frees the the environment copy.
  */
-
-void absPath(char **cmds, char *buffer, char **env, char **argv, int number)
+void free_env(void)
 {
-	struct stat getfileStat_0;
-	int i = 0;
-	char **alldir;
+	int index;
 
-	alldir = env_pathlist(cmds[0], env);
-
-	while (alldir[i]) /* looping through directories in PATH */
-	{
-		if (stat(alldir[i], &getfileStat_0) == 0) /* if true, execute */
-			execve(alldir[i], cmds, NULL);
-		++i;
-	}
-	hsh_errormsg(argv, cmds[0], number);
-
-	free(buffer);
-	free_doubleptr(cmds);
-	free_doubleptr(alldir);
-	exit(EXIT_SUCCESS);
+	for (index = 0; environ[index]; index++)
+		free(environ[index]);
+	free(environ);
 }
 
 /**
- * fork_fail - function that handles a fork fail
+ * _getenv - Gets an environmental variable from the PATH.
+ * @var: The name of the environmental variable to get.
  *
- * Return: void
+ * Return: If the environmental variable does not exist - NULL.
+ *         Otherwise - a pointer to the environmental variable.
  */
-void fork_fail(void)
+char **_getenv(const char *var)
 {
-	perror("Error:");
-	exit(EXIT_FAILURE);
+	int index, len;
+
+	len = _strlen(var);
+	for (index = 0; environ[index]; index++)
+	{
+		if (_strncmp(var, environ[index], len) == 0)
+			return (&environ[index]);
+	}
+
+	return (NULL);
 }
